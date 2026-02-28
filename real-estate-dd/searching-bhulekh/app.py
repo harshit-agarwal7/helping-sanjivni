@@ -65,7 +65,7 @@ jobs = {}
 
 
 class RorTargetNavigationError(RuntimeError):
-    """Raised when View RoR does not resolve to SRoRFront_Uni.aspx in time."""
+    """Raised when View RoR target page is not reached in time."""
 
     def __init__(self, message, main_url=None, popup_seen=False, page_urls=None):
         super().__init__(message)
@@ -108,11 +108,11 @@ async def select_and_wait_postback(page, selector, visible_text=None, index=None
             elif index is not None:
                 await page.select_option(selector, index=index)
     except Exception:
-        # Fallback: just wait a bit if response wasn't caught
-        await page.wait_for_timeout(3000)
+        # Fallback: response listeners can miss very fast postbacks.
+        await page.wait_for_timeout(800)
 
-    # Give DOM time to update after AJAX response
-    await page.wait_for_timeout(1000)
+    # Small debounce for DOM repaint after async postback.
+    await page.wait_for_timeout(250)
 
 
 async def save_page_as_pdf(page, pdf_path):
@@ -131,14 +131,34 @@ async def save_page_as_pdf(page, pdf_path):
 
 
 async def wait_for_ror_target_page(page, timeout_ms=45000):
-    """Click View RoR and wait for same-tab navigation to SRoRFront_Uni.aspx."""
+    """Click View RoR and wait for CRoR target page in same tab or popup."""
+    target_tokens = ("CRoRFront_Uni.aspx",)
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + (timeout_ms / 1000.0)
+
+    def is_target_url(url):
+        return any(token in url for token in target_tokens)
+
     try:
         await page.locator(SELECTORS["view_ror_btn"]).click()
-        await page.wait_for_url("**/SRoRFront_Uni.aspx", timeout=timeout_ms)
-        return page
+
+        while loop.time() < deadline:
+            if is_target_url(page.url):
+                return page
+
+            for p in page.context.pages:
+                if p is page or p.is_closed():
+                    continue
+                if is_target_url(p.url):
+                    await p.wait_for_load_state("domcontentloaded", timeout=10000)
+                    return p
+
+            await page.wait_for_timeout(200)
+
+        raise TimeoutError("Timed out waiting for CRoR target URL")
     except Exception as exc:
         raise RorTargetNavigationError(
-            f"SRoR target not reached in same tab: {exc}",
+            f"RoR target page not reached in time: {exc}",
             main_url=page.url,
             popup_seen=False,
             page_urls=[p.url for p in page.context.pages],
@@ -173,9 +193,7 @@ async def navigate_and_select_location(page, district, tahsil, village):
         await page.evaluate(
             "javascript:setTimeout(\"__doPostBack('ctl00$ContentPlaceHolder1$rbtnRORSearchtype$0','')\", 0)"
         )
-        await page.wait_for_timeout(3000)
-
-    await page.wait_for_timeout(2000)
+        await page.wait_for_timeout(800)
 
     # Verify khatiyan dropdown appeared
     khatiyan_dd = page.locator(SELECTORS["khatiyan_dropdown"])
@@ -235,7 +253,7 @@ async def process_single_khatiyan(context, khatiyan, output_dir, job_id, distric
         send_event(job_id, "error", {
             "khatiyan": khatiyan,
             "message": str(e),
-            "reason": "SRoR target not reached",
+            "reason": "CRoR target not reached",
             "main_url": e.main_url,
             "popup_seen": e.popup_seen,
             "page_urls": e.page_urls,
