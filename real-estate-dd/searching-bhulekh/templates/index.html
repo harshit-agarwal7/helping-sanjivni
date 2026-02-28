@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bhulekh Odisha — RoR Download</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Source+Serif+4:ital,wght@0,300;0,400;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+  :root {
+    --parchment: #f5f0e8;
+    --parchment-dark: #ebe4d6;
+    --ink: #2c2416;
+    --ink-light: #5a4e3c;
+    --ink-faint: #8a7e6c;
+    --accent: #8b4513;
+    --accent-warm: #a0522d;
+    --success: #3d6b3d;
+    --error: #8b2020;
+    --rule: #c9bea8;
+    --rule-light: #ddd5c4;
+    --field-bg: #fdfbf7;
+    --shadow: rgba(44,36,22,0.08);
+  }
+
+  html { font-size: 16px; }
+
+  body {
+    font-family: 'Source Serif 4', Georgia, 'Times New Roman', serif;
+    background-color: var(--parchment);
+    color: var(--ink);
+    min-height: 100vh;
+    line-height: 1.6;
+    position: relative;
+  }
+
+  /* Cadastral grid background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(var(--rule-light) 1px, transparent 1px),
+      linear-gradient(90deg, var(--rule-light) 1px, transparent 1px);
+    background-size: 60px 60px;
+    opacity: 0.4;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    position: relative;
+    z-index: 1;
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 3rem 2rem 4rem;
+  }
+
+  /* Header */
+  header {
+    text-align: center;
+    margin-bottom: 2.5rem;
+    padding-bottom: 2rem;
+    border-bottom: 2px solid var(--ink);
+    position: relative;
+  }
+
+  header::after {
+    content: '';
+    position: absolute;
+    bottom: -5px;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: var(--ink);
+  }
+
+  .emblem {
+    display: inline-block;
+    width: 48px;
+    height: 48px;
+    border: 2px solid var(--ink);
+    border-radius: 50%;
+    line-height: 44px;
+    text-align: center;
+    font-size: 1.25rem;
+    margin-bottom: 1rem;
+    font-family: 'Playfair Display', serif;
+    font-weight: 700;
+    color: var(--accent);
+  }
+
+  h1 {
+    font-family: 'Playfair Display', serif;
+    font-weight: 700;
+    font-size: 1.75rem;
+    letter-spacing: 0.02em;
+    margin-bottom: 0.25rem;
+    color: var(--ink);
+  }
+
+  .subtitle {
+    font-size: 0.875rem;
+    color: var(--ink-faint);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-weight: 400;
+  }
+
+  /* Form */
+  .form-panel {
+    background: var(--field-bg);
+    border: 1px solid var(--rule);
+    padding: 2rem;
+    margin-bottom: 2rem;
+    position: relative;
+  }
+
+  .form-panel::before {
+    content: 'SEARCH PARAMETERS';
+    position: absolute;
+    top: -0.6em;
+    left: 1.5rem;
+    background: var(--field-bg);
+    padding: 0 0.75rem;
+    font-size: 0.7rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    font-weight: 600;
+  }
+
+  .form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.25rem;
+  }
+
+  .form-group {
+    margin-bottom: 1.25rem;
+  }
+
+  .form-group.full-width {
+    grid-column: 1 / -1;
+  }
+
+  label {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-light);
+    margin-bottom: 0.4rem;
+  }
+
+  label .optional {
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--ink-faint);
+    font-style: italic;
+  }
+
+  input[type="text"],
+  textarea {
+    width: 100%;
+    padding: 0.6rem 0.75rem;
+    font-family: 'Source Serif 4', Georgia, serif;
+    font-size: 0.95rem;
+    color: var(--ink);
+    background: var(--parchment);
+    border: 1px solid var(--rule);
+    border-bottom: 2px solid var(--rule);
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+
+  input[type="text"]:focus,
+  textarea:focus {
+    border-color: var(--accent);
+    border-bottom-color: var(--accent);
+    box-shadow: 0 2px 0 var(--accent);
+  }
+
+  textarea {
+    resize: vertical;
+    min-height: 80px;
+    line-height: 1.5;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--ink-faint);
+    font-style: italic;
+    opacity: 0.7;
+  }
+
+  .btn-submit {
+    display: block;
+    width: 100%;
+    padding: 0.85rem 2rem;
+    font-family: 'Playfair Display', serif;
+    font-size: 1rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: var(--parchment);
+    background: var(--ink);
+    border: none;
+    cursor: pointer;
+    transition: background 0.25s, transform 0.1s;
+    margin-top: 0.5rem;
+  }
+
+  .btn-submit:hover:not(:disabled) {
+    background: var(--accent);
+  }
+
+  .btn-submit:active:not(:disabled) {
+    transform: translateY(1px);
+  }
+
+  .btn-submit:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  /* Progress Section */
+  .progress-section {
+    display: none;
+    animation: fadeIn 0.4s ease;
+  }
+
+  .progress-section.visible {
+    display: block;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .progress-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 0.75rem;
+    border-bottom: 2px solid var(--ink);
+    margin-bottom: 0;
+    position: relative;
+  }
+
+  .progress-header::after {
+    content: '';
+    position: absolute;
+    bottom: -4px;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: var(--ink);
+  }
+
+  .progress-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.1rem;
+    font-weight: 600;
+  }
+
+  .progress-spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--rule);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  .progress-spinner.done {
+    animation: none;
+    border-color: var(--success);
+    background: var(--success);
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  /* Log Entries — ledger style */
+  .log-entries {
+    list-style: none;
+    max-height: 420px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--rule) transparent;
+  }
+
+  .log-entry {
+    display: grid;
+    grid-template-columns: 5.5rem 1.4rem 1fr;
+    gap: 0.5rem;
+    align-items: baseline;
+    padding: 0.55rem 0.75rem;
+    border-bottom: 1px solid var(--rule-light);
+    font-size: 0.875rem;
+    animation: slideIn 0.2s ease;
+  }
+
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateX(-6px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+
+  .log-entry:hover {
+    background: rgba(139,69,19,0.03);
+  }
+
+  .log-time {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.75rem;
+    color: var(--ink-faint);
+    white-space: nowrap;
+  }
+
+  .log-icon {
+    text-align: center;
+    font-size: 0.8rem;
+    line-height: 1;
+  }
+
+  .log-msg {
+    color: var(--ink-light);
+    word-break: break-word;
+  }
+
+  .log-entry.success .log-icon { color: var(--success); }
+  .log-entry.success .log-msg { color: var(--success); font-weight: 600; }
+
+  .log-entry.error .log-icon { color: var(--error); }
+  .log-entry.error .log-msg { color: var(--error); }
+
+  .log-entry .download-link {
+    color: var(--accent);
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+    font-weight: 600;
+    margin-left: 0.5rem;
+  }
+
+  .log-entry .download-link:hover {
+    border-bottom-color: var(--accent);
+  }
+
+  /* Summary */
+  .summary-bar {
+    display: none;
+    margin-top: 1.25rem;
+    padding: 1rem 1.25rem;
+    background: var(--field-bg);
+    border: 1px solid var(--rule);
+    border-left: 4px solid var(--ink);
+    animation: fadeIn 0.4s ease;
+  }
+
+  .summary-bar.visible {
+    display: flex;
+    align-items: center;
+    gap: 2rem;
+  }
+
+  .summary-label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--ink-faint);
+    font-weight: 600;
+  }
+
+  .summary-stats {
+    display: flex;
+    gap: 1.5rem;
+  }
+
+  .stat {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.85rem;
+    font-weight: 500;
+  }
+
+  .stat.ok { color: var(--success); }
+  .stat.fail { color: var(--error); }
+
+  /* Footer */
+  footer {
+    margin-top: 3rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--rule);
+    text-align: center;
+    font-size: 0.75rem;
+    color: var(--ink-faint);
+    letter-spacing: 0.04em;
+  }
+
+  /* Scrollbar */
+  .log-entries::-webkit-scrollbar { width: 6px; }
+  .log-entries::-webkit-scrollbar-track { background: transparent; }
+  .log-entries::-webkit-scrollbar-thumb { background: var(--rule); border-radius: 3px; }
+
+  /* Responsive */
+  @media (max-width: 600px) {
+    .container { padding: 2rem 1.25rem; }
+    .form-row { grid-template-columns: 1fr; }
+    h1 { font-size: 1.4rem; }
+    .log-entry { grid-template-columns: 4.5rem 1.2rem 1fr; font-size: 0.8rem; }
+  }
+</style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="emblem">ଭୂ</div>
+      <h1>Bhulekh Odisha</h1>
+      <p class="subtitle">Record of Rights — Bulk PDF Download</p>
+    </header>
+
+    <form id="searchForm" class="form-panel" autocomplete="off">
+      <div class="form-row">
+        <div class="form-group">
+          <label for="district">District</label>
+          <input type="text" id="district" name="district" required>
+        </div>
+        <div class="form-group">
+          <label for="tahasil">Tahsil</label>
+          <input type="text" id="tahasil" name="tahasil" required>
+        </div>
+        <div class="form-group">
+          <label for="village">Village</label>
+          <input type="text" id="village" name="village" required>
+        </div>
+        <div class="form-group">
+          <!-- RI Circle is disabled on the portal, not needed -->
+        </div>
+        <div class="form-group full-width">
+          <label for="khatiyans">Khatiyans</label>
+          <textarea id="khatiyans" name="khatiyans" required
+            placeholder="Enter khatiyan numbers separated by commas, e.g. 101, 205, 310"></textarea>
+        </div>
+      </div>
+      <button type="submit" class="btn-submit" id="submitBtn">Start Download</button>
+    </form>
+
+    <section class="progress-section" id="progressSection">
+      <div class="progress-header">
+        <span class="progress-title">Download Progress</span>
+        <div class="progress-spinner" id="spinner"></div>
+      </div>
+      <ul class="log-entries" id="logEntries"></ul>
+      <div class="summary-bar" id="summaryBar">
+        <span class="summary-label">Complete</span>
+        <div class="summary-stats">
+          <span class="stat ok" id="statOk"></span>
+          <span class="stat fail" id="statFail"></span>
+        </div>
+      </div>
+    </section>
+
+    <footer>
+      Bhulekh Odisha &middot; bhulekh.ori.nic.in &middot; Land Records Automation Tool
+    </footer>
+  </div>
+
+<script>
+(function() {
+  const form = document.getElementById('searchForm');
+  const submitBtn = document.getElementById('submitBtn');
+  const progressSection = document.getElementById('progressSection');
+  const logEntries = document.getElementById('logEntries');
+  const spinner = document.getElementById('spinner');
+  const summaryBar = document.getElementById('summaryBar');
+  const statOk = document.getElementById('statOk');
+  const statFail = document.getElementById('statFail');
+
+  let currentJobId = null;
+  let eventSource = null;
+
+  function timestamp() {
+    const d = new Date();
+    return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+  }
+
+  function addLogEntry(type, message, extra) {
+    const li = document.createElement('li');
+    li.className = 'log-entry ' + type;
+
+    const icons = { status: '→', success: '✓', error: '✗' };
+
+    let msgHtml = message;
+    if (type === 'success' && extra && extra.filename) {
+      msgHtml += `<a class="download-link" href="/download/${currentJobId}/${extra.filename}" target="_blank">↓ PDF</a>`;
+    }
+
+    li.innerHTML = `
+      <span class="log-time">${timestamp()}</span>
+      <span class="log-icon">${icons[type] || '·'}</span>
+      <span class="log-msg">${msgHtml}</span>
+    `;
+
+    logEntries.appendChild(li);
+    logEntries.scrollTop = logEntries.scrollHeight;
+  }
+
+  function setFormEnabled(enabled) {
+    const fields = form.querySelectorAll('input, textarea');
+    fields.forEach(f => f.disabled = !enabled);
+    submitBtn.disabled = !enabled;
+    submitBtn.textContent = enabled ? 'Start Download' : 'Downloading…';
+  }
+
+  function resetProgress() {
+    logEntries.innerHTML = '';
+    summaryBar.classList.remove('visible');
+    spinner.classList.remove('done');
+    progressSection.classList.add('visible');
+  }
+
+  form.addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    const payload = {
+      district: document.getElementById('district').value.trim(),
+      tahasil: document.getElementById('tahasil').value.trim(),
+      village: document.getElementById('village').value.trim(),
+      khatiyans: document.getElementById('khatiyans').value.trim(),
+    };
+
+    setFormEnabled(false);
+    resetProgress();
+    addLogEntry('status', 'Submitting request…');
+
+    try {
+      const resp = await fetch('/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json();
+        addLogEntry('error', err.error || 'Server error');
+        setFormEnabled(true);
+        return;
+      }
+
+      const data = await resp.json();
+      currentJobId = data.job_id;
+      addLogEntry('status', `Job started — ID: ${currentJobId}`);
+
+      // Open SSE stream
+      eventSource = new EventSource(`/progress/${currentJobId}`);
+
+      eventSource.onmessage = function(event) {
+        const msg = JSON.parse(event.data);
+
+        if (msg.type === 'heartbeat') return;
+
+        if (msg.type === 'status') {
+          addLogEntry('status', msg.data.message);
+        }
+        else if (msg.type === 'success') {
+          const kb = (msg.data.size / 1024).toFixed(1);
+          addLogEntry('success', `Khatiyan ${msg.data.khatiyan} — saved (${kb} KB)`, msg.data);
+        }
+        else if (msg.type === 'error') {
+          addLogEntry('error', `Khatiyan ${msg.data.khatiyan} — ${msg.data.message}`);
+        }
+        else if (msg.type === 'done') {
+          spinner.classList.add('done');
+          statOk.textContent = `${msg.data.succeeded} succeeded`;
+          statFail.textContent = `${msg.data.failed} failed`;
+          summaryBar.classList.add('visible');
+          eventSource.close();
+          eventSource = null;
+          setFormEnabled(true);
+        }
+      };
+
+      eventSource.onerror = function() {
+        addLogEntry('error', 'Connection to server lost');
+        eventSource.close();
+        eventSource = null;
+        setFormEnabled(true);
+      };
+
+    } catch (err) {
+      addLogEntry('error', 'Network error: ' + err.message);
+      setFormEnabled(true);
+    }
+  });
+})();
+</script>
+</body>
+</html>
