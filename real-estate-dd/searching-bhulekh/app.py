@@ -130,6 +130,21 @@ async def save_page_as_pdf(page, pdf_path):
     return len(pdf_bytes)
 
 
+async def click_print_and_get_popup(target_page, timeout_ms=30000):
+    """Click Print button on the Khatiyan page and return the print popup page."""
+    print_btn = target_page.get_by_role("button", name="Print").or_(
+        target_page.locator("input[value='Print']")
+    ).or_(
+        target_page.locator("a:has-text('Print')"))
+
+    async with target_page.expect_popup(timeout=timeout_ms) as popup_info:
+        await print_btn.click()
+
+    popup = await popup_info.value
+    await popup.wait_for_load_state("domcontentloaded", timeout=15000)
+    return popup
+
+
 async def wait_for_ror_target_page(page, timeout_ms=45000):
     """Click View RoR and wait for CRoR target page in same tab or popup."""
     target_tokens = ("CRoRFront_Uni.aspx",)
@@ -208,6 +223,7 @@ async def process_single_khatiyan(context, khatiyan, output_dir, job_id, distric
 
     page = await context.new_page()
     target_page = None
+    print_popup = None
     try:
         await page.goto(URL, wait_until="networkidle", timeout=60000)
         await handle_session_timeout(page)
@@ -232,14 +248,17 @@ async def process_single_khatiyan(context, khatiyan, output_dir, job_id, distric
             })
             return False
 
-        # Select the khatiyan and wait for postback update.
-        await select_and_wait_postback(page, selector, visible_text=khatiyan)
+        # Select the khatiyan (no postback needed — next step is clicking View RoR).
+        await page.select_option(selector, label=khatiyan)
 
         target_page = await wait_for_ror_target_page(page, timeout_ms=45000)
 
-        # Save the RoR page as PDF
-        pdf_size = await save_page_as_pdf(target_page, pdf_path)
-        source_url = target_page.url
+        # Click Print button to open the print-ready popup
+        print_popup = await click_print_and_get_popup(target_page, timeout_ms=30000)
+
+        # Save the print popup page as PDF
+        pdf_size = await save_page_as_pdf(print_popup, pdf_path)
+        source_url = print_popup.url
 
         send_event(job_id, "success", {
             "khatiyan": khatiyan,
@@ -266,6 +285,9 @@ async def process_single_khatiyan(context, khatiyan, output_dir, job_id, distric
         })
         return False
     finally:
+        # Close print popup if it was opened
+        if print_popup is not None and not print_popup.is_closed():
+            await print_popup.close()
         if target_page is not None and target_page is not page and not target_page.is_closed():
             await target_page.close()
         await page.close()
