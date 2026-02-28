@@ -22,6 +22,31 @@ app = Flask(__name__)
 OUTPUT_BASE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "output")
 URL = "https://bhulekh.ori.nic.in/RoRView.aspx"
 
+
+def env_flag(name, default=False):
+    """Parse boolean env vars like 1/0, true/false, yes/no, on/off."""
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def env_int(name, default=0):
+    """Parse integer env vars, falling back to default when invalid."""
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        return int(raw.strip())
+    except ValueError:
+        return default
+
+
+PLAYWRIGHT_HEADLESS = env_flag("PLAYWRIGHT_HEADLESS", default=True)
+PLAYWRIGHT_SLOW_MO_MS = max(0, env_int("PLAYWRIGHT_SLOW_MO_MS", default=0))
+PLAYWRIGHT_DEVTOOLS = env_flag("PLAYWRIGHT_DEVTOOLS", default=False)
+
+
 # ASP.NET element selectors — verified via --discover
 SELECTORS = {
     "district": "#ctl00_ContentPlaceHolder1_ddlDistrict",
@@ -105,71 +130,19 @@ async def save_page_as_pdf(page, pdf_path):
     return len(pdf_bytes)
 
 
-async def wait_for_ror_target_page(page, context, timeout_ms=45000):
-    """Click View RoR and resolve the page that reaches SRoRFront_Uni.aspx."""
-    popup_state = {"seen": False}
-
-    async def wait_for_popup_target():
-        popup = await context.wait_for_event("page", timeout=timeout_ms)
-        popup_state["seen"] = True
-        await popup.wait_for_load_state("domcontentloaded", timeout=timeout_ms)
-        await popup.wait_for_url("**/SRoRFront_Uni.aspx", timeout=timeout_ms)
-        return popup
-
-    same_tab_task = asyncio.create_task(
-        page.wait_for_url("**/SRoRFront_Uni.aspx", timeout=timeout_ms)
-    )
-    popup_task = asyncio.create_task(wait_for_popup_target())
-    pending = {same_tab_task, popup_task}
-    same_tab_error = None
-    popup_error = None
-
+async def wait_for_ror_target_page(page, timeout_ms=45000):
+    """Click View RoR and wait for same-tab navigation to SRoRFront_Uni.aspx."""
     try:
         await page.locator(SELECTORS["view_ror_btn"]).click()
-
-        while pending:
-            done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
-            for task in done:
-                if task is same_tab_task:
-                    if task.exception() is None:
-                        for other in pending:
-                            other.cancel()
-                        if pending:
-                            await asyncio.gather(*pending, return_exceptions=True)
-                        return page
-                    same_tab_error = task.exception()
-                elif task is popup_task:
-                    if task.exception() is None:
-                        for other in pending:
-                            other.cancel()
-                        if pending:
-                            await asyncio.gather(*pending, return_exceptions=True)
-                        return task.result()
-                    popup_error = task.exception()
-
-        raise RorTargetNavigationError(
-            (
-                "SRoR target not reached after clicking View RoR. "
-                f"same_tab_error={same_tab_error}; popup_error={popup_error}"
-            ),
-            main_url=page.url,
-            popup_seen=popup_state["seen"],
-            page_urls=[p.url for p in context.pages],
-        )
+        await page.wait_for_url("**/SRoRFront_Uni.aspx", timeout=timeout_ms)
+        return page
     except Exception as exc:
-        if not isinstance(exc, RorTargetNavigationError):
-            raise RorTargetNavigationError(
-                f"SRoR target not reached: {exc}",
-                main_url=page.url,
-                popup_seen=popup_state["seen"],
-                page_urls=[p.url for p in context.pages],
-            ) from exc
-        raise
-    finally:
-        for task in (same_tab_task, popup_task):
-            if not task.done():
-                task.cancel()
-        await asyncio.gather(same_tab_task, popup_task, return_exceptions=True)
+        raise RorTargetNavigationError(
+            f"SRoR target not reached in same tab: {exc}",
+            main_url=page.url,
+            popup_seen=False,
+            page_urls=[p.url for p in page.context.pages],
+        ) from exc
 
 
 async def navigate_and_select_location(page, district, tahsil, village):
@@ -244,7 +217,7 @@ async def process_single_khatiyan(context, khatiyan, output_dir, job_id, distric
         # Select the khatiyan and wait for postback update.
         await select_and_wait_postback(page, selector, visible_text=khatiyan)
 
-        target_page = await wait_for_ror_target_page(page, context, timeout_ms=45000)
+        target_page = await wait_for_ror_target_page(page, timeout_ms=45000)
 
         # Save the RoR page as PDF
         pdf_size = await save_page_as_pdf(target_page, pdf_path)
@@ -288,14 +261,40 @@ async def run_scraping_job(job_id, district, tahsil, village, khatiyans):
     succeeded = 0
     failed = 0
 
-    send_event(job_id, "status", {"message": "Launching browser..."})
+    mode = "headless" if PLAYWRIGHT_HEADLESS else "headed"
+    send_event(job_id, "status", {"message": f"Launching browser ({mode})..."})
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
+        launch_kwargs = {"headless": PLAYWRIGHT_HEADLESS}
+        if PLAYWRIGHT_SLOW_MO_MS > 0:
+            launch_kwargs["slow_mo"] = PLAYWRIGHT_SLOW_MO_MS
+
+        requested_devtools = PLAYWRIGHT_DEVTOOLS and not PLAYWRIGHT_HEADLESS
+        devtools_enabled = False
+        if requested_devtools:
+            launch_kwargs["devtools"] = True
+
+        try:
+            browser = await p.chromium.launch(**launch_kwargs)
+            devtools_enabled = requested_devtools
+        except TypeError as e:
+            if "unexpected keyword argument 'devtools'" not in str(e):
+                raise
+            launch_kwargs.pop("devtools", None)
+            send_event(job_id, "status", {
+                "message": "Installed Playwright version does not support devtools launch flag. Continuing without devtools."
+            })
+            browser = await p.chromium.launch(**launch_kwargs)
         context = await browser.new_context()
 
         try:
-            send_event(job_id, "status", {"message": "Browser launched. Starting downloads..."})
+            send_event(job_id, "status", {
+                "message": (
+                    "Browser launched. Starting downloads... "
+                    f"(mode={mode}, slow_mo={PLAYWRIGHT_SLOW_MO_MS}ms, "
+                    f"devtools={'on' if devtools_enabled else 'off'})"
+                )
+            })
 
             # Process each khatiyan in a fresh page
             for i, khatiyan in enumerate(khatiyans):
@@ -474,4 +473,10 @@ if __name__ == "__main__":
     else:
         os.makedirs(OUTPUT_BASE, exist_ok=True)
         print(f"Starting server on http://localhost:{args.port}")
+        print(
+            "Playwright settings:",
+            f"headless={PLAYWRIGHT_HEADLESS}",
+            f"slow_mo_ms={PLAYWRIGHT_SLOW_MO_MS}",
+            f"devtools={PLAYWRIGHT_DEVTOOLS and not PLAYWRIGHT_HEADLESS}",
+        )
         app.run(debug=True, port=args.port, threaded=True)
