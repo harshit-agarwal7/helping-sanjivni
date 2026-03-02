@@ -20,7 +20,7 @@ from playwright.async_api import async_playwright
 app = Flask(__name__)
 
 OUTPUT_BASE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "output")
-URL = "https://bhulekh.ori.nic.in/RoRView.aspx"
+URL = "https://bhulekh.ori.nic.in"
 
 
 def env_flag(name, default=False):
@@ -194,23 +194,7 @@ async def navigate_and_select_location(page, district, tahsil, village):
     # Select Village (RI Circle is disabled, skip it)
     await select_and_wait_postback(page, SELECTORS["village"], visible_text=village)
 
-    # Click the Khatiyan radio button to reveal the khatiyan dropdown.
-    # The radio's onclick uses __doPostBack which may not fire reliably with force-click,
-    # so we also trigger the postback via JS as a fallback.
-    try:
-        async with page.expect_response(
-            lambda r: "RoRView.aspx" in r.url and r.request.method == "POST",
-            timeout=15000,
-        ):
-            await page.click(SELECTORS["khatiyan_radio"], force=True)
-    except Exception:
-        # Force the postback via JS if the click didn't trigger it
-        await page.evaluate(
-            "javascript:setTimeout(\"__doPostBack('ctl00$ContentPlaceHolder1$rbtnRORSearchtype$0','')\", 0)"
-        )
-        await page.wait_for_timeout(800)
-
-    # Verify khatiyan dropdown appeared
+    # Wait for the khatiyan dropdown (radio is selected by default).
     khatiyan_dd = page.locator(SELECTORS["khatiyan_dropdown"])
     await khatiyan_dd.wait_for(state="visible", timeout=15000)
 
@@ -235,21 +219,30 @@ async def process_single_khatiyan(context, khatiyan, output_dir, job_id, distric
         dropdown = page.locator(selector)
         await dropdown.wait_for(state="visible", timeout=15000)
 
-        # Check if the khatiyan exists in the dropdown
-        options = await page.eval_on_selector(
+        # Check if the khatiyan exists and select it in a single browser-side JS call
+        # to avoid serialising potentially thousands of option texts to Python.
+        result = await page.eval_on_selector(
             selector,
-            "el => Array.from(el.options).map(o => o.text.trim())"
+            """(el, target) => {
+                for (const opt of el.options) {
+                    if (opt.text.trim() === target) {
+                        el.value = opt.value;
+                        el.dispatchEvent(new Event('change', { bubbles: true }));
+                        return { found: true };
+                    }
+                }
+                const sample = Array.from(el.options).slice(0, 15).map(o => o.text.trim());
+                return { found: false, sample };
+            }""",
+            khatiyan,
         )
 
-        if khatiyan not in options:
+        if not result["found"]:
             send_event(job_id, "error", {
                 "khatiyan": khatiyan,
-                "message": f"Khatiyan '{khatiyan}' not found in dropdown. Available: {options[:15]}..."
+                "message": f"Khatiyan '{khatiyan}' not found in dropdown. Available: {result['sample']}..."
             })
             return False
-
-        # Select the khatiyan (no postback needed — next step is clicking View RoR).
-        await page.select_option(selector, label=khatiyan)
 
         target_page = await wait_for_ror_target_page(page, timeout_ms=45000)
 
